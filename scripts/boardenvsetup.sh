@@ -13,6 +13,9 @@ cb_build_linux()
 	cp ${CB_KSRC_DIR}/arch/arm/configs/kernel_defconfig ${CB_KSRC_DIR}/.config
     make -C ${CB_KSRC_DIR}  ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} -j6 INSTALL_MOD_PATH=${CB_TARGET_DIR}  uImage modules
     rm -rf ${CB_KSRC_DIR}/arch/arm/configs/kernel_defconfig
+	cd ${CB_KSRC_DIR}/modules/rogue_km/build/linux/sunxi_linux
+	make  KERNELDIR=${CB_KSRC_DIR}
+	cd -
     echo "Build linux successfully"
 }
 
@@ -26,6 +29,9 @@ cb_build_card_image()
 		if [ -e ${CB_OUTPUT_DIR}/card0-part2/root/boot-file ]; then
 			cp -v  ${CB_PRODUCT_DIR}/sys_config.fex  ${CB_OUTPUT_DIR}/card0-part2/root/boot-file
 		fi
+	mkdir  -pv ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
+	chmod +x ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko
+	cp ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
 
 	(cd ${CB_OUTPUT_DIR}/card0-part2; tar -c * )|gzip -9 > ${CB_OUTPUT_DIR}/rootfs-part2.tar.gz
 	cat  ${CB_TOOLS_DIR}/scripts/readme.txt
@@ -106,7 +112,7 @@ cb_make_boot_a80()
 	cd ${CB_SDK_ROOTDIR}
 }
 
-cb_install_tfcard()
+cb_part_install_tfcard()
 {
 	local   sd_dev=$1
 	local	pack_install="install"
@@ -135,6 +141,23 @@ cb_install_tfcard()
     	echo "Make sunxi partitions failed"
     	return 1
     	fi
+	fi
+}
+
+cb_install_tfcard()
+{
+	local   sd_dev=$1
+	local	pack_install="install"
+	echo "$1 $2 !"
+	if [ $# -eq 2 ]; then
+		if [ $2 = "pack" ];then
+			pack_install="pack"
+			local	RootfsSizeKB=$(expr $CB_ROOTFS_SIZE \* 1024  +  100 \* 1024)
+			local	PartExt4=$(expr $RootfsSizeKB + $RootfsSizeKB / 10)
+			local	PartSize=$(expr $PartExt4 \* 2)
+		else
+			echo "the 2 parameter only support [pack] now !"
+		fi
 	fi
 
 	cb_make_boot_a80 ${sd_dev}
@@ -167,32 +190,54 @@ cb_install_tfcard()
 	sudo rm -fr ${CB_OUTPUT_DIR}/part1 ${CB_OUTPUT_DIR}/part2
 }
 
-cb_install_flash_card()
+cb_build_flash_card_image()
 {
-	local   sd_dev=$1
-	local	pack_install="install"
-	echo "$1 $2 !"
-	if [ $# -eq 2 ]; then
-		if [ $2 = "pack" ];then
-			pack_install="pack"
-		else
-			echo "the 2 parameter only support [pack] now !"
-		fi
+    cb_build_linux
+	sudo rm ${CB_OUTPUT_DIR}/card0-part2/ -fr
+	if [ -e ${CB_OUTPUT_DIR}/rootfs ] ; then
+		sudo umount ${CB_OUTPUT_DIR}/rootfs
+		sudo rm ${CB_OUTPUT_DIR}/rootfs -fr
 	fi
+	make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} INSTALL_FW_PATH=${CB_OUTPUT_DIR}/card0-part2/lib/firmware -j8 firmware_install
+    make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} -j4 INSTALL_MOD_PATH=${CB_OUTPUT_DIR}/card0-part2 modules_install
+	(cd ${CB_PRODUCT_DIR}/overlay; tar -c *) | tar -C ${CB_OUTPUT_DIR}/card0-part2  -x --no-same-owner
+		if [ -e ${CB_OUTPUT_DIR}/card0-part2/root/boot-file ]; then
+			cp -v  ${CB_PRODUCT_DIR}/sys_config.fex  ${CB_OUTPUT_DIR}/card0-part2/root/boot-file
+		fi
+	mkdir  -pv ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
+	chmod +x ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko
+	cp ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
 
+	(cd ${CB_OUTPUT_DIR}/card0-part2; tar -c * )|gzip -9 > ${CB_OUTPUT_DIR}/rootfs-part2.tar.gz
 	CB_ROOTFS_SIZE_TO_DD=$(expr ${CB_ROOTFS_SIZE} + ${CB_ROOTFS_SIZE} / 4)
 	sudo dd if=/dev/zero of=${CB_OUTPUT_DIR}/rootfs.ext4 bs=1M count=${CB_ROOTFS_SIZE_TO_DD}
-        echo "######### please type 'y' ################"
-	sudo mkfs.ext4 -i 8192 ${CB_OUTPUT_DIR}/rootfs.ext4
+	echo y | sudo mkfs.ext4 -i 8192 ${CB_OUTPUT_DIR}/rootfs.ext4
+
+
 	mkdir ${CB_OUTPUT_DIR}/rootfs
 	sudo mount ${CB_OUTPUT_DIR}/rootfs.ext4 ${CB_OUTPUT_DIR}/rootfs
 	sudo tar -C ${CB_OUTPUT_DIR}/rootfs --strip-components=1 -zxpf ${CB_ROOTFS_IMAGE}
 	sync
 	sudo tar -C ${CB_OUTPUT_DIR}/rootfs -zxpf ${CB_OUTPUT_DIR}/rootfs-part2.tar.gz
+	sudo cp ${CB_PRODUCT_DIR}/firstrun  ${CB_OUTPUT_DIR}/rootfs/etc/init.d/firstrun
+	sudo cp ${CB_PRODUCT_DIR}/rcS  ${CB_OUTPUT_DIR}/rootfs/etc/init.d/rcS
+	sudo chmod +x  ${CB_OUTPUT_DIR}/rootfs/etc/init.d/firstrun
+	sudo chmod +x  ${CB_OUTPUT_DIR}/rootfs/etc/init.d/rcS
+	sudo touch  ${CB_OUTPUT_DIR}/rootfs/root/firstrun
 	sync
 	(cd ${CB_OUTPUT_DIR}/rootfs;  sudo tar -cp *) |gzip -9 > ${CB_OUTPUT_DIR}/rootfs.tar.gz
 	cd ${CB_SDK_ROOTDIR}
 	sync
+	sudo umount ${CB_OUTPUT_DIR}/rootfs
+	rm ${CB_OUTPUT_DIR}/rootfs -fr
+	cat  ${CB_TOOLS_DIR}/scripts/readme.txt
+
+}
+
+cb_part_install_flash_card()
+{
+	local   sd_dev=$1
+	echo "$1"
 	local sizeByte=$(sudo du -sb ${CB_OUTPUT_DIR}/rootfs.tar.gz | awk '{print $1}')
 #	sizeBytetgz=$(sudo du -sb ${CB_ROOTFS_IMAGE} | awk '{print $1}')
 	local RootfsSizeKB=$(expr $sizeByte / 1000 + $CB_FLASH_TSD_ROOTFS_SIZE \* 1024 +  50 \* 1024)
@@ -208,6 +253,27 @@ cb_install_flash_card()
     echo "Make sunxi partitions failed"
     return 1
     fi
+}
+
+cb_install_flash_card()
+{
+	local   sd_dev=$1
+	local	pack_install="install"
+	echo "$1 $2 !"
+	if [ $# -eq 2 ]; then
+		if [ $2 = "pack" ];then
+			pack_install="pack"
+		else
+			echo "the 2 parameter only support [pack] now !"
+		fi
+	fi
+
+	local sizeByte=$(sudo du -sb ${CB_OUTPUT_DIR}/rootfs.tar.gz | awk '{print $1}')
+#	sizeBytetgz=$(sudo du -sb ${CB_ROOTFS_IMAGE} | awk '{print $1}')
+	local RootfsSizeKB=$(expr $sizeByte / 1000 + $CB_FLASH_TSD_ROOTFS_SIZE \* 1024 +  50 \* 1024)
+	local PartExt4=$(expr $RootfsSizeKB + $RootfsSizeKB / 10)
+	local PartSize=$(expr $PartExt4 \* 2)
+	echo "PartSize=${PartSize}  sizeByte=${PartExt4}"
 
 	cb_make_boot_a80 ${sd_dev}
 	mkdir -pv ${CB_OUTPUT_DIR}/part1 ${CB_OUTPUT_DIR}/part2
