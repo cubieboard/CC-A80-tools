@@ -183,7 +183,7 @@ cb_install_tfcard()
 	if [ $pack_install = "pack" ]; then
 		ddSize=$(expr $PartExt4 / 1024 + 100)
 		echo "card size must larger than $ddSize !"
-		sudo dd if=/dev/${sd_dev} of=${CB_OUTPUT_DIR}/${CB_BOARD_NAME}-${CB_SYSTEM_NAME}-tfcard.img bs=1M count=$ddSize
+		sudo dd if=/dev/${sd_dev} of=${CB_OUTPUT_DIR}/${CB_SYSTEM_NAME}-tfcard.img bs=1M count=$ddSize
 	fi
 	sync
 	sudo umount ${CB_OUTPUT_DIR}/part2
