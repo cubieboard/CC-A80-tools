@@ -13,7 +13,7 @@ Build sdcard image:
 
         2. emmc card boot
 	(1)cb_build_flash_card_image (compile code to prepare cb_install_flash_card)
-	(2)cb_part_install_flash_card dev_label [pack]
+	(2)cb_part_install_flash_card dev_label
 		dev_label:      sdb sdc sdd ...
 		pack:           the parameter mean we will make a img for dd or win32writer
                 cmd for example: cb_part_install_flash_card sdb pack

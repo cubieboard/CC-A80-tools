@@ -13,9 +13,9 @@ cb_build_linux()
 	cp ${CB_KSRC_DIR}/arch/arm/configs/kernel_defconfig ${CB_KSRC_DIR}/.config
     make -C ${CB_KSRC_DIR}  ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} -j6 INSTALL_MOD_PATH=${CB_TARGET_DIR}  uImage modules
     rm -rf ${CB_KSRC_DIR}/arch/arm/configs/kernel_defconfig
-	cd ${CB_KSRC_DIR}/modules/rogue_km/build/linux/sunxi_linux
-	make  KERNELDIR=${CB_KSRC_DIR}
-	cd -
+    cd ${CB_KSRC_DIR}/modules/rogue_km/build/linux/sunxi_linux
+    make  KERNELDIR=${CB_KSRC_DIR}
+    cd -
     echo "Build linux successfully"
 }
 
@@ -23,15 +23,29 @@ cb_build_card_image()
 {
     cb_build_linux
 	sudo rm ${CB_OUTPUT_DIR}/card0-part2/ -fr
-	make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} INSTALL_FW_PATH=${CB_OUTPUT_DIR}/card0-part2/lib/firmware -j8 firmware_install
-    make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} -j4 INSTALL_MOD_PATH=${CB_OUTPUT_DIR}/card0-part2 modules_install
+
+	echo $CB_SYSTEM_NAME |grep -q "fedora"
+        if [ $? -eq 0  ];then
+
+		make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} INSTALL_FW_PATH=${CB_OUTPUT_DIR}/card0-part2/usr/lib/firmware -j8 firmware_install
+        	make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} -j4 INSTALL_MOD_PATH=${CB_OUTPUT_DIR}/card0-part2/usr modules_install
+
+		echo "this is fedora"
+	else
+		make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} INSTALL_FW_PATH=${CB_OUTPUT_DIR}/card0-part2/lib/firmware -j8 firmware_install
+	        make -C ${CB_KSRC_DIR} ARCH=arm CROSS_COMPILE=${CB_CROSS_COMPILE} -j4 INSTALL_MOD_PATH=${CB_OUTPUT_DIR}/card0-part2 modules_install
+
+	fi
+
+
 	(cd ${CB_PRODUCT_DIR}/overlay; tar -c *) | tar -C ${CB_OUTPUT_DIR}/card0-part2  -x --no-same-owner
 		if [ -e ${CB_OUTPUT_DIR}/card0-part2/root/boot-file ]; then
 			cp -v  ${CB_PRODUCT_DIR}/sys_config.fex  ${CB_OUTPUT_DIR}/card0-part2/root/boot-file
+                        busybox dos2unix ${CB_OUTPUT_DIR}/card0-part2/root/boot-file/sys_config.fex
 		fi
 	mkdir  -pv ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
-	chmod +x ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko
-	cp ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
+	sudo chmod +x ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko
+	sudo cp ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
 
 	(cd ${CB_OUTPUT_DIR}/card0-part2; tar -c * )|gzip -9 > ${CB_OUTPUT_DIR}/rootfs-part2.tar.gz
 	cat  ${CB_TOOLS_DIR}/scripts/readme.txt
@@ -203,6 +217,7 @@ cb_build_flash_card_image()
 	(cd ${CB_PRODUCT_DIR}/overlay; tar -c *) | tar -C ${CB_OUTPUT_DIR}/card0-part2  -x --no-same-owner
 		if [ -e ${CB_OUTPUT_DIR}/card0-part2/root/boot-file ]; then
 			cp -v  ${CB_PRODUCT_DIR}/sys_config.fex  ${CB_OUTPUT_DIR}/card0-part2/root/boot-file
+                        busybox dos2unix ${CB_OUTPUT_DIR}/card0-part2/root/boot-file/sys_config.fex
 		fi
 	mkdir  -pv ${CB_OUTPUT_DIR}/card0-part2/lib/modules/3.4.39/extra/
 	chmod +x ${CB_KSRC_DIR}/modules/rogue_km/binary_sunxi_linux_xorg_release/target_armhf/*.ko
